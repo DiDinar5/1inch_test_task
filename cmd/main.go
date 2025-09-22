@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/DiDinar5/1inch_test_task/config"
+	"github.com/DiDinar5/1inch_test_task/internal/ethereum"
 	"github.com/DiDinar5/1inch_test_task/internal/handler.go"
 	"github.com/DiDinar5/1inch_test_task/internal/usecase"
 	"github.com/labstack/echo/v4"
@@ -19,7 +20,12 @@ import (
 func main() {
 	cfg := config.Load()
 
-	usecaseInstance := usecase.NewUsecase()
+	ethereumService, err := ethereum.NewEthereumService(cfg.Ethereum.RPCURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize Ethereum service: %v", err)
+	}
+
+	usecaseInstance := usecase.NewUsecase(ethereumService)
 
 	handlerInstance := handler.NewHandler(usecaseInstance)
 

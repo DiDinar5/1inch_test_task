@@ -9,12 +9,18 @@ import (
 )
 
 type Config struct {
-	Server ServerConfig `yaml:"server"`
+	Server   ServerConfig   `yaml:"server"`
+	Ethereum EthereumConfig `yaml:"ethereum"`
 }
 
 type ServerConfig struct {
 	Port string `yaml:"port"`
 	Host string `yaml:"host"`
+}
+
+type EthereumConfig struct {
+	RPCURL  string `yaml:"rpc_url"`
+	Timeout string `yaml:"timeout"`
 }
 
 func Load() *Config {
@@ -25,8 +31,12 @@ func Load() *Config {
 
 	return &Config{
 		Server: ServerConfig{
-			Port: "1337",
-			Host: "localhost",
+			Port: config.Server.Port,
+			Host: config.Server.Host,
+		},
+		Ethereum: EthereumConfig{
+			RPCURL:  config.Ethereum.RPCURL,
+			Timeout: config.Ethereum.Timeout,
 		},
 	}
 }
