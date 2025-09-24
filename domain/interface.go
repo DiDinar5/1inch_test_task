@@ -8,5 +8,4 @@ type UsecaseInterface interface {
 
 type EthereumServiceInterface interface {
 	GetPoolReserves(ctx context.Context, poolAddress string) (*PoolReserves, error)
-	GetTokenInfo(ctx context.Context, tokenAddress string) (*TokenInfo, error)
 }

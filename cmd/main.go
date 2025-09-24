@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/DiDinar5/1inch_test_task/config"
-	"github.com/DiDinar5/1inch_test_task/internal/ethereum"
+	"github.com/DiDinar5/1inch_test_task/infrastructure/ethereum"
 	"github.com/DiDinar5/1inch_test_task/internal/handler"
 	validator "github.com/DiDinar5/1inch_test_task/internal/middlewares"
 	"github.com/DiDinar5/1inch_test_task/internal/usecase"
