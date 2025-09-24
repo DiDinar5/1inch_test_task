@@ -7,3 +7,8 @@ import (
 func NewUsecase(ethereumService domain.EthereumServiceInterface) domain.UsecaseInterface {
 	return NewEstimateUsecase(ethereumService)
 }
+
+const (
+	UniswapV2FeeNumerator   = 997
+	UniswapV2FeeDenominator = 1000
+)

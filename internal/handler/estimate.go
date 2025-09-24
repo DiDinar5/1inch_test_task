@@ -9,8 +9,21 @@ import (
 
 func (h *Handler) EstimateHandler(c echo.Context) error {
 	var req domain.EstimateRequest
-	//bind
-	//validation middleware
+
+	if err := echo.QueryParamsBinder(c).
+		String("pool", &req.Pool).
+		String("src", &req.Src).
+		String("dst", &req.Dst).
+		String("src_amount", &req.SrcAmount).
+		BindError(); err != nil {
+		errrorJson(http.StatusBadRequest, err.Error(), c.Response().Writer)
+		return nil
+	}
+
+	if err := c.Validate(&req); err != nil {
+		errrorJson(http.StatusBadRequest, err.Error(), c.Response().Writer)
+		return nil
+	}
 
 	response, err := h.usecase.Estimate(c.Request().Context(), req)
 	if err != nil {

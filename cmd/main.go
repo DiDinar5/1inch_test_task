@@ -11,7 +11,8 @@ import (
 
 	"github.com/DiDinar5/1inch_test_task/config"
 	"github.com/DiDinar5/1inch_test_task/internal/ethereum"
-	"github.com/DiDinar5/1inch_test_task/internal/handler.go"
+	"github.com/DiDinar5/1inch_test_task/internal/handler"
+	validator "github.com/DiDinar5/1inch_test_task/internal/middlewares"
 	"github.com/DiDinar5/1inch_test_task/internal/usecase"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
@@ -32,6 +33,7 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 
+	e.Validator = validator.NewValidator()
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 

@@ -16,6 +16,5 @@ func NewHandler(usecase domain.UsecaseInterface) *Handler {
 }
 
 func (h *Handler) SetupRoutes(e *echo.Echo) {
-	api := e.Group("/api/v1")
-	api.GET("/estimate", h.EstimateHandler)
+	e.GET("/estimate", h.EstimateHandler)
 }
