@@ -19,7 +19,10 @@ import (
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config file: %v", err)
+	}
 
 	ethereumService, err := ethereum.NewEthereumService(cfg.Ethereum.RPCURL)
 	if err != nil {

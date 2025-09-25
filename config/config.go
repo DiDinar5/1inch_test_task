@@ -3,7 +3,6 @@ package config
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -23,22 +22,13 @@ type EthereumConfig struct {
 	Timeout string `yaml:"timeout"`
 }
 
-func Load() *Config {
+func Load() (*Config, error) {
 	config, err := loadFromYAML("config.yaml")
-	if err == nil {
-		return config
+	if err != nil {
+		return nil, err
 	}
 
-	return &Config{
-		Server: ServerConfig{
-			Port: config.Server.Port,
-			Host: config.Server.Host,
-		},
-		Ethereum: EthereumConfig{
-			RPCURL:  config.Ethereum.RPCURL,
-			Timeout: config.Ethereum.Timeout,
-		},
-	}
+	return config, nil
 }
 
 func loadFromYAML(filename string) (*Config, error) {
@@ -57,16 +47,4 @@ func loadFromYAML(filename string) (*Config, error) {
 	}
 
 	return &config, nil
-}
-
-func LoadFromPath(configPath string) (*Config, error) {
-	if !filepath.IsAbs(configPath) {
-		wd, err := os.Getwd()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get working directory: %w", err)
-		}
-		configPath = filepath.Join(wd, configPath)
-	}
-
-	return loadFromYAML(configPath)
 }
