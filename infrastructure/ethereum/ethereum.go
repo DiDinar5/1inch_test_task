@@ -10,6 +10,7 @@ import (
 	"github.com/DiDinar5/1inch_test_task/domain"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
@@ -20,7 +21,8 @@ type EthereumService struct {
 	erc20ABI         abi.ABI
 	tokenAddresses   map[string]string
 	tokenAddressesMu sync.RWMutex
-	abiInitOnce      sync.Once
+	tokenInfoCache   map[string]*domain.TokenInfo
+	tokenInfoMu      sync.RWMutex
 }
 
 const uniswapV2PairABI = `[
@@ -77,27 +79,30 @@ func NewEthereumService(rpcURL string) (*EthereumService, error) {
 	service := &EthereumService{
 		client:         client,
 		tokenAddresses: make(map[string]string),
+		tokenInfoCache: make(map[string]*domain.TokenInfo),
 	}
 
-	service.abiInitOnce.Do(func() {
-		service.initABI()
-	})
+	if err := service.initABI(); err != nil {
+		return nil, fmt.Errorf("failed to initialize ABI: %w", err)
+	}
 
 	return service, nil
 }
 
-func (e *EthereumService) initABI() {
+func (e *EthereumService) initABI() error {
 	var err error
 
 	e.uniswapV2ABI, err = abi.JSON(strings.NewReader(uniswapV2PairABI))
 	if err != nil {
-		panic(fmt.Sprintf("failed to parse Uniswap V2 ABI: %v", err))
+		return fmt.Errorf("failed to parse Uniswap V2 ABI: %w", err)
 	}
 
 	e.erc20ABI, err = abi.JSON(strings.NewReader(erc20ABI))
 	if err != nil {
-		panic(fmt.Sprintf("failed to parse ERC20 ABI: %v", err))
+		return fmt.Errorf("failed to parse ERC20 ABI: %w", err)
 	}
+
+	return nil
 }
 
 func (e *EthereumService) GetPoolReserves(ctx context.Context, poolAddress string) (*domain.PoolReserves, error) {
@@ -123,22 +128,30 @@ func (e *EthereumService) GetPoolReserves(ctx context.Context, poolAddress strin
 	}
 
 	if token0Address == (common.Address{}) || token1Address == (common.Address{}) {
-		token0Data, err := e.callContract(ctx, poolContract, e.uniswapV2ABI, "token0")
-		if err != nil {
-			return nil, fmt.Errorf("failed to get token0 address: %w", err)
+		boundContract := bind.NewBoundContract(poolContract, e.uniswapV2ABI, e.client, e.client, e.client)
+
+		var token0Result []interface{}
+		if err := boundContract.Call(&bind.CallOpts{Context: ctx}, &token0Result, "token0"); err != nil {
+			return nil, fmt.Errorf("failed to call token0: %w", err)
+		}
+		if len(token0Result) > 0 {
+			if addr, ok := token0Result[0].(common.Address); ok {
+				token0Address = addr
+			} else {
+				return nil, fmt.Errorf("unexpected token0 result type")
+			}
 		}
 
-		token1Data, err := e.callContract(ctx, poolContract, e.uniswapV2ABI, "token1")
-		if err != nil {
-			return nil, fmt.Errorf("failed to get token1 address: %w", err)
+		var token1Result []interface{}
+		if err := boundContract.Call(&bind.CallOpts{Context: ctx}, &token1Result, "token1"); err != nil {
+			return nil, fmt.Errorf("failed to call token1: %w", err)
 		}
-
-		if err := e.uniswapV2ABI.UnpackIntoInterface(&token0Address, "token0", token0Data); err != nil {
-			return nil, fmt.Errorf("failed to unpack token0 address: %w", err)
-		}
-
-		if err := e.uniswapV2ABI.UnpackIntoInterface(&token1Address, "token1", token1Data); err != nil {
-			return nil, fmt.Errorf("failed to unpack token1 address: %w", err)
+		if len(token1Result) > 0 {
+			if addr, ok := token1Result[0].(common.Address); ok {
+				token1Address = addr
+			} else {
+				return nil, fmt.Errorf("unexpected token1 result type")
+			}
 		}
 
 		e.tokenAddressesMu.Lock()
@@ -180,34 +193,65 @@ func (e *EthereumService) GetTokenInfo(ctx context.Context, tokenAddress string)
 		return nil, fmt.Errorf("invalid token address: %s", tokenAddress)
 	}
 
+	e.tokenInfoMu.RLock()
+	if cached, exists := e.tokenInfoCache[tokenAddress]; exists {
+		e.tokenInfoMu.RUnlock()
+		return cached, nil
+	}
+	e.tokenInfoMu.RUnlock()
+
 	tokenContract := common.HexToAddress(tokenAddress)
-
-	symbolData, err := e.callContract(ctx, tokenContract, e.erc20ABI, "symbol")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token symbol: %w", err)
-	}
-
-	decimalsData, err := e.callContract(ctx, tokenContract, e.erc20ABI, "decimals")
-	if err != nil {
-		return nil, fmt.Errorf("failed to get token decimals: %w", err)
-	}
+	boundContract := bind.NewBoundContract(tokenContract, e.erc20ABI, e.client, e.client, e.client)
 
 	var symbol string
+	var symbolResult []interface{}
+	if err := boundContract.Call(&bind.CallOpts{Context: ctx}, &symbolResult, "symbol"); err != nil {
+		return nil, fmt.Errorf("failed to call symbol: %w", err)
+	}
+	if len(symbolResult) > 0 {
+		if s, ok := symbolResult[0].(string); ok {
+			symbol = s
+		} else {
+			return nil, fmt.Errorf("unexpected symbol result type")
+		}
+	}
+
 	var decimals uint8
-
-	if err := e.erc20ABI.UnpackIntoInterface(&symbol, "symbol", symbolData); err != nil {
-		return nil, fmt.Errorf("failed to unpack symbol: %w", err)
+	var decimalsResult []interface{}
+	if err := boundContract.Call(&bind.CallOpts{Context: ctx}, &decimalsResult, "decimals"); err != nil {
+		return nil, fmt.Errorf("failed to call decimals: %w", err)
 	}
 
-	if err := e.erc20ABI.UnpackIntoInterface(&decimals, "decimals", decimalsData); err != nil {
-		return nil, fmt.Errorf("failed to unpack decimals: %w", err)
+	if len(decimalsResult) > 0 {
+		switch v := decimalsResult[0].(type) {
+		case uint8:
+			decimals = v
+		case uint32:
+			decimals = uint8(v)
+		case uint64:
+			decimals = uint8(v)
+		case *big.Int:
+			if v.IsUint64() && v.Uint64() <= 255 {
+				decimals = uint8(v.Uint64())
+			} else {
+				return nil, fmt.Errorf("decimals value too large: %s", v.String())
+			}
+		default:
+			return nil, fmt.Errorf("unexpected decimals result type: %T", v)
+		}
 	}
 
-	return &domain.TokenInfo{
+	tokenInfo := &domain.TokenInfo{
 		Address:  tokenAddress,
 		Symbol:   symbol,
 		Decimals: decimals,
-	}, nil
+	}
+
+	e.tokenInfoMu.Lock()
+	e.tokenInfoCache[tokenAddress] = tokenInfo
+	e.tokenInfoMu.Unlock()
+
+	return tokenInfo, nil
 }
 
 func (e *EthereumService) callContract(ctx context.Context, contract common.Address, parsedABI abi.ABI, method string) ([]byte, error) {
@@ -222,6 +266,10 @@ func (e *EthereumService) callContract(ctx context.Context, contract common.Addr
 	}, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to call contract method %s: %w", method, err)
+	}
+
+	if len(result) == 0 {
+		return nil, fmt.Errorf("empty result from contract method %s", method)
 	}
 
 	return result, nil

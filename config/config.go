@@ -22,13 +22,13 @@ type EthereumConfig struct {
 	Timeout string `yaml:"timeout"`
 }
 
-func Load() (*Config, error) {
+func Load() *Config {
 	config, err := loadFromYAML("config.yaml")
 	if err != nil {
-		return nil, err
+		return defaultConfig()
 	}
 
-	return config, nil
+	return config
 }
 
 func loadFromYAML(filename string) (*Config, error) {
@@ -47,4 +47,17 @@ func loadFromYAML(filename string) (*Config, error) {
 	}
 
 	return &config, nil
+}
+
+func defaultConfig() *Config {
+	return &Config{
+		Server: ServerConfig{
+			Host: "localhost",
+			Port: "1337",
+		},
+		Ethereum: EthereumConfig{
+			RPCURL:  "http://localhost:8545",
+			Timeout: "30s",
+		},
+	}
 }

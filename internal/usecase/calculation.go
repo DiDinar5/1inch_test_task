@@ -4,6 +4,15 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
+)
+
+var (
+	feeNumerator   = big.NewInt(UniswapV2FeeNumerator)
+	feeDenominator = big.NewInt(UniswapV2FeeDenominator)
+	zeroBig        = big.NewInt(0)
+
+	bigIntPool = sync.Pool{New: func() interface{} { return new(big.Int) }}
 )
 
 func (u *EstimateUsecase) parseAmount(amountStr string) (*big.Int, error) {
@@ -26,37 +35,55 @@ func (u *EstimateUsecase) parseAmount(amountStr string) (*big.Int, error) {
 }
 
 func (u *EstimateUsecase) calculateAMMOutput(input, reserveIn, reserveOut *big.Int) (*big.Int, error) {
-	if reserveIn.Cmp(big.NewInt(0)) <= 0 {
+	if input == nil || reserveIn == nil || reserveOut == nil {
+		return nil, fmt.Errorf("nil input/reserves")
+	}
+	if input.Sign() <= 0 {
+		return nil, fmt.Errorf("input amount must be positive")
+	}
+	if reserveIn.Sign() <= 0 {
 		return nil, fmt.Errorf("invalid reserve in: must be positive")
 	}
-	if reserveOut.Cmp(big.NewInt(0)) <= 0 {
+	if reserveOut.Sign() <= 0 {
 		return nil, fmt.Errorf("invalid reserve out: must be positive")
 	}
 
-	if input.Cmp(big.NewInt(0)) <= 0 {
-		return nil, fmt.Errorf("input amount must be positive")
+	tmpInputWithFee := getTmp()
+	tmpNumerator := getTmp()
+	tmpReserveInWithFee := getTmp()
+	tmpDenominator := getTmp()
+	tmpOutput := getTmp()
+
+	defer func() {
+		putTmp(tmpInputWithFee)
+		putTmp(tmpNumerator)
+		putTmp(tmpReserveInWithFee)
+		putTmp(tmpDenominator)
+		putTmp(tmpOutput)
+	}()
+
+	tmpInputWithFee.Mul(input, feeNumerator)
+
+	tmpNumerator.Mul(tmpInputWithFee, reserveOut)
+
+	tmpReserveInWithFee.Mul(reserveIn, feeDenominator)
+
+	tmpDenominator.Add(tmpReserveInWithFee, tmpInputWithFee)
+
+	tmpOutput.Div(tmpNumerator, tmpDenominator)
+
+	out := new(big.Int).Set(tmpOutput)
+	if out.Sign() <= 0 {
+		return out, nil
 	}
+	return out, nil
+}
 
-	feeNumerator := big.NewInt(UniswapV2FeeNumerator)
-	feeDenominator := big.NewInt(UniswapV2FeeDenominator)
+func getTmp() *big.Int {
+	return bigIntPool.Get().(*big.Int)
+}
 
-	inputWithFee := new(big.Int).Mul(input, feeNumerator)
-
-	numerator := new(big.Int).Mul(inputWithFee, reserveOut)
-
-	reserveInWithFee := new(big.Int).Mul(reserveIn, feeDenominator)
-
-	denominator := new(big.Int).Add(reserveInWithFee, inputWithFee)
-
-	if denominator.Cmp(big.NewInt(0)) == 0 {
-		return nil, fmt.Errorf("division by zero in AMM calculation")
-	}
-
-	output := new(big.Int).Div(numerator, denominator)
-
-	if output.Cmp(big.NewInt(0)) <= 0 {
-		return nil, fmt.Errorf("calculated output amount is not positive")
-	}
-
-	return output, nil
+func putTmp(x *big.Int) {
+	x.SetInt64(0)
+	bigIntPool.Put(x)
 }
